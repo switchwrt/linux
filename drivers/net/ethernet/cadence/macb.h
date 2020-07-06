@@ -1297,6 +1297,8 @@ struct macb {
 
 	struct macb_pm_data pm_data;
 	const struct macb_usrio_config *usrio;
+
+	bool mdio_only;
 };
 
 #ifdef CONFIG_MACB_USE_HWSTAMP

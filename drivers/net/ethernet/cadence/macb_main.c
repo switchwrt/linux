@@ -883,6 +883,10 @@ static int macb_mdiobus_register(struct macb *bp)
 
 			return of_mdiobus_register(bp->mii_bus, np);
 		}
+	if (bp->mdio_only) {
+		pr_debug("MDIO-only macb device => register bus via DTB\n");
+		return of_mdiobus_register(bp->mii_bus, np);
+	}
 
 	return mdiobus_register(bp->mii_bus);
 }
@@ -913,6 +917,9 @@ static int macb_mii_init(struct macb *bp)
 	err = macb_mdiobus_register(bp);
 	if (err)
 		goto err_out_free_mdiobus;
+
+	if (bp->mdio_only)
+		return 0;
 
 	err = macb_mii_probe(bp->dev);
 	if (err)
@@ -4501,6 +4508,15 @@ static const struct macb_config sama5d3_config = {
 	.usrio = &macb_default_usrio,
 };
 
+static const struct macb_config metel_mdio_only_config = {
+	.caps = MACB_CAPS_SG_DISABLED | MACB_CAPS_GIGABIT_MODE_AVAILABLE
+	      | MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII | MACB_CAPS_JUMBO,
+	.dma_burst_length = 16,
+	.clk_init = macb_clk_init,
+	.init = macb_init,
+	.jumbo_max_len = 10240,
+};
+
 static const struct macb_config sama5d4_config = {
 	.caps = MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII,
 	.dma_burst_length = 4,
@@ -4570,6 +4586,7 @@ static const struct of_device_id macb_dt_ids[] = {
 	{ .compatible = "atmel,sama5d2-gem", .data = &sama5d2_config },
 	{ .compatible = "atmel,sama5d3-gem", .data = &sama5d3_config },
 	{ .compatible = "atmel,sama5d3-macb", .data = &sama5d3macb_config },
+	{ .compatible = "metel,macb-mdio", .data = &metel_mdio_only_config },
 	{ .compatible = "atmel,sama5d4-gem", .data = &sama5d4_config },
 	{ .compatible = "cdns,at91rm9200-emac", .data = &emac_config },
 	{ .compatible = "cdns,emac", .data = &emac_config },
@@ -4672,6 +4689,7 @@ static int macb_probe(struct platform_device *pdev)
 	bp->tx_clk = tx_clk;
 	bp->rx_clk = rx_clk;
 	bp->tsu_clk = tsu_clk;
+	bp->mdio_only = (macb_config == &metel_mdio_only_config);
 	if (macb_config)
 		bp->jumbo_max_len = macb_config->jumbo_max_len;
 
@@ -4750,6 +4768,9 @@ static int macb_probe(struct platform_device *pdev)
 	if (err)
 		goto err_out_free_netdev;
 
+	if (bp->mdio_only)
+		return 0;
+
 	netif_carrier_off(dev);
 
 	err = register_netdev(dev);
@@ -4797,7 +4818,8 @@ static int macb_remove(struct platform_device *pdev)
 		mdiobus_unregister(bp->mii_bus);
 		mdiobus_free(bp->mii_bus);
 
-		unregister_netdev(dev);
+		if (!bp->mdio_only)
+			unregister_netdev(dev);
 		tasklet_kill(&bp->hresp_err_tasklet);
 		pm_runtime_disable(&pdev->dev);
 		pm_runtime_dont_use_autosuspend(&pdev->dev);
