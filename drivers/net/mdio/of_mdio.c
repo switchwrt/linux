@@ -237,6 +237,44 @@ bool of_mdiobus_child_is_phy(struct device_node *child)
 }
 EXPORT_SYMBOL(of_mdiobus_child_is_phy);
 
+static int of_mdiobus_reg_init(struct mii_bus *mdio,
+			       struct device_node *dn, u32 addr)
+{
+	int len;
+	int i;
+	int ret;
+
+	if (!dn)
+		return 0;
+
+	if (!of_get_property(dn, "custom,reg-init", &len))
+		return 0;
+	len /= 8;
+
+	for (i = 0; i < len; i += 1) {
+		u32 offset;
+		u32 value;
+
+		ret = of_property_read_u32_index(dn, "custom,reg-init", 2*i + 0, &offset);
+		if (ret)
+			return ret;
+
+		ret = of_property_read_u32_index(dn, "custom,reg-init", 2*i + 1, &value);
+		if (ret)
+			return ret;
+
+		dev_info(&mdio->dev, "Custom MDIO register setting: %.02x:%.02x -> %.04x\n", addr, offset, value);
+
+		ret = mdiobus_write(mdio, addr, offset, value);
+		if (ret) {
+			dev_err(&mdio->dev, "Error initializing MDIO device registers\n");
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 /**
  * of_mdiobus_register - Register mii_bus and create PHYs from the device tree
  * @mdio: pointer to mii_bus structure
@@ -288,6 +326,8 @@ int of_mdiobus_register(struct mii_bus *mdio, struct device_node *np)
 			rc = of_mdiobus_register_phy(mdio, child, addr);
 		else
 			rc = of_mdiobus_register_device(mdio, child, addr);
+
+		rc = of_mdiobus_reg_init(mdio, child, addr);
 
 		if (rc == -ENODEV)
 			dev_err(&mdio->dev,
