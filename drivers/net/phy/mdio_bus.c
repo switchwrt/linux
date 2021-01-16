@@ -39,6 +39,7 @@
 #include <trace/events/mdio.h>
 
 #include "mdio-boardinfo.h"
+#include "mdio-debugfs.h"
 
 static int mdiobus_register_gpiod(struct mdio_device *mdiodev)
 {
@@ -580,6 +581,8 @@ int __mdiobus_register(struct mii_bus *bus, struct module *owner)
 
 	mdiobus_setup_mdiodev_from_board_info(bus, mdiobus_create_device);
 
+	mdio_debugfs_add(bus);
+
 	bus->state = MDIOBUS_REGISTERED;
 	pr_info("%s: probed\n", bus->name);
 	return 0;
@@ -610,6 +613,8 @@ void mdiobus_unregister(struct mii_bus *bus)
 
 	BUG_ON(bus->state != MDIOBUS_REGISTERED);
 	bus->state = MDIOBUS_UNREGISTERED;
+
+	mdio_debugfs_remove(bus);
 
 	for (i = 0; i < PHY_MAX_ADDR; i++) {
 		mdiodev = bus->mdio_map[i];

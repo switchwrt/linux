@@ -367,6 +367,9 @@ struct mii_bus {
 
 	/** @shared: shared state across different PHYs */
 	struct phy_package_shared *shared[PHY_MAX_ADDR];
+
+	/* debugfs file for MDIO access */
+	struct dentry *debugfs_dentry;
 };
 #define to_mii_bus(d) container_of(d, struct mii_bus, dev)
 
