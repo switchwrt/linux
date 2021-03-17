@@ -1902,9 +1902,35 @@ static const struct nla_policy br_vlan_db_policy[BRIDGE_VLANDB_ENTRY_MAX + 1] = 
 	[BRIDGE_VLANDB_ENTRY_INFO]	=
 		NLA_POLICY_EXACT_LEN(sizeof(struct bridge_vlan_info)),
 	[BRIDGE_VLANDB_ENTRY_RANGE]	= { .type = NLA_U16 },
+	[BRIDGE_VLANDB_ENTRY_FID]	= { .type = NLA_U16 },
+	[BRIDGE_VLANDB_ENTRY_SID]	= { .type = NLA_U16 },
 	[BRIDGE_VLANDB_ENTRY_STATE]	= { .type = NLA_U8 },
 	[BRIDGE_VLANDB_ENTRY_TUNNEL_INFO] = { .type = NLA_NESTED },
 };
+
+static int br_vlan_bridge_notify(struct net_device *dev, struct nlattr **tb, struct netlink_ext_ack *extack)
+{
+	u16 vid = 0;
+	u16 fid = 0;
+	u16 sid = 0;
+	u8 state = 0;
+	int flags = 0;
+
+	if (tb[BRIDGE_VLANDB_ENTRY_INFO]) {
+		struct bridge_vlan_info *vinfo = nla_data(tb[BRIDGE_VLANDB_ENTRY_INFO]);
+
+		vid = vinfo->vid;
+		flags = vinfo->flags;
+	}
+	if (tb[BRIDGE_VLANDB_ENTRY_FID])
+		fid = nla_get_u16(tb[BRIDGE_VLANDB_ENTRY_FID]);
+	if (tb[BRIDGE_VLANDB_ENTRY_SID])
+		sid = nla_get_u16(tb[BRIDGE_VLANDB_ENTRY_SID]);
+	if (tb[BRIDGE_VLANDB_ENTRY_STATE])
+		state = nla_get_u16(tb[BRIDGE_VLANDB_ENTRY_STATE]);
+
+	return br_switchdev_port_vlan_add(dev, vid, fid, sid, state, flags, extack);
+}
 
 static int br_vlan_rtm_process_one(struct net_device *dev,
 				   const struct nlattr *attr,
@@ -1939,7 +1965,8 @@ static int br_vlan_rtm_process_one(struct net_device *dev,
 
 	if (!tb[BRIDGE_VLANDB_ENTRY_INFO]) {
 		NL_SET_ERR_MSG_MOD(extack, "Missing vlan entry info");
-		return -EINVAL;
+		/* Handle SID-to-STATE requests gracefully */
+		return br_vlan_bridge_notify(dev, tb, extack);
 	}
 	memset(&vrange_end, 0, sizeof(vrange_end));
 
@@ -2008,7 +2035,11 @@ static int br_vlan_rtm_process_one(struct net_device *dev,
 					      tb, extack);
 	}
 
-	return err;
+	err = br_vlan_bridge_notify(dev, tb, extack);
+	if (err && err != -EOPNOTSUPP)
+		return err;
+
+	return 0;
 }
 
 static int br_vlan_rtm_process(struct sk_buff *skb, struct nlmsghdr *nlh,
